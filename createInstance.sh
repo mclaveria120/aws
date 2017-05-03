@@ -1,20 +1,25 @@
 #!/bin/bash
 
+set -e
+
 # PARAMETERS
 
-imageid="" ##free tire  needed:ami-6edd3078 
+imageid="ami-6edd3078" ##free tire  needed:ami-6edd3078 
 numberOfInstances=1
-instanceType="t2.micro"
+instanceType="t2.small"
 ebs="[{\"DeviceName\":\"/dev/sda1\",\"Ebs\":{\"VolumeSize\":10,\"VolumeType\":\"standard\",\"DeleteOnTermination\":false}}]"
-keyName=""
-securityGroup=""
-subnetId="" #us-east-1e
+keyName="tagName"
+subnetId="subnet-3930b305" # subnet-3930b305 us-east-1e #subnet-7b744732 1a
 
-hostedZoneId=""
-domainName=""
+hostedZoneId="Z243R08ALCDDW"
 
 createInstance(){	
-	aws ec2 run-instances --image-id $imageid --count $numberOfInstances  --security-group-ids $securityGroup  --instance-type $instanceType  --associate-public-ip-address --disable-api-termination --subnet-id $subnetId  --block-device-mappings $ebs --key-name $keyName
+	securityGroup=$(aws ec2 describe-security-groups --output=json | jq '.SecurityGroups | .[] | select(.GroupName=="web") | .GroupId'  | cut -d '"' -f2)
+    
+
+	aws ec2 run-instances --iam-instance-profile Name=CodeDeployEC2ServiceRole --image-id $imageid --count $numberOfInstances  --security-group-ids $securityGroup  --instance-type $instanceType  --associate-public-ip-address --disable-api-termination --subnet-id $subnetId  --block-device-mappings $ebs --key-name $keyName --user-data file://instance-setup.sh
+    echo "Adding Tag"
+    aws ec2 create-tags --resources $(aws ec2 describe-instances  --query 'Reservations[0].Instances[0].InstanceId' --output text) --tags Key=TEAM,Value=1
 }
 
 checkIp (){
@@ -35,7 +40,7 @@ printJSON(){
 	    {
 	    "Action": "UPSERT",
 	    "ResourceRecordSet":{
-	        "Name": "$domainName",
+	        "Name": "domain.",
 	        "Type": "A",
 	        "TTL": 300,
 	        "ResourceRecords":[
@@ -73,11 +78,11 @@ start(){
 	echo "IP $ip "
 	echo "Building Json for updating DNS records"
 	printJSON
-	setARecord
+ 	setARecord
 	echo "Updating DNS Records..."
 	sleep 15
-	echo "$domainName"
-	dig $domainName
+	echo "domain"
+	dig domain +short
 
 }
 
